@@ -1,0 +1,24 @@
+# ==============================================================================
+# DuctBot ROS 2 Package Python Dependencies
+# Target: Ubuntu 22.04 LTS / ROS 2 Humble / Jetson Linux (L4T)
+# Company: Roboserv 4i PVT. LTD.
+# ==============================================================================
+
+# Core Mathematical & Kinematic Processing
+numpy>=1.20.0,<1.25.0
+scipy>=1.8.0,<1.12.0
+
+# Hardware Serial & Sensor Communication
+pyserial>=3.5
+
+# Video Processing & Temporal Alignment (DTW)
+pandas>=1.3.5
+moviepy>=1.0.3,<2.0.0
+imageio>=2.9.0,<3.0.0
+imageio-ffmpeg>=0.4.0
+opencv-python>=4.5.0
+Pillow>=8.3.2
+
+# Progress Tracking & Utility
+tqdm>=4.60.0
+proglog>=0.1.9

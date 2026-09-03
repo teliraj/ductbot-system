@@ -1,0 +1,30 @@
+ductbot_localization_node:
+  ros__parameters:
+    # Serial Port Settings
+    port: "/dev/ttyUSB0"
+    baudrate: 115200
+    
+    # Kinematic & Robot Geometry Parameters (Meters & Ticks)
+    wheel_base: 0.260               # Center-to-center track distance (26cm)
+    front_offset: 0.145             # Center of rotation to front camera edge (14.5cm)
+    ticks_per_meter_fwd: 15055.0    # Forward motion calibration (ticks/m)
+    ticks_per_meter_rev: 16260.0    # Reverse motion calibration (ticks/m)
+    backlash_ticks: 450             # Mechanical track slack compensation (~3cm)
+    sample_rate_hz: 100.0           # Telemetry incoming frequency
+    
+    # Coordinate Frames (TF2)
+    odom_frame: "odom"
+    base_frame: "base_link"
+    front_face_frame: "front_face_link"
+    imu_frame: "imu_link"
+    tof_left_frame: "tof_left_link"
+    tof_right_frame: "tof_right_link"
+    publish_tf: true
+    
+    # Checkpoint Logger Parameters
+    enable_checkpoint_logging: true
+    checkpoint_interval_m: 0.01     # Spatial interval to log checkpoints (10mm = 0.01m)
+    csv_output_dir: "~/ductbot_logs"
+    
+    # Simulation / Mock Mode
+    sim_mode: false

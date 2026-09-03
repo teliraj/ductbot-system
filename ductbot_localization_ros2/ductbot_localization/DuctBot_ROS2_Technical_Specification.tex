@@ -1,0 +1,309 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{microtype}
+
+% --- Color Definitions ---
+\definecolor{primaryblue}{RGB}{18, 52, 86}
+\definecolor{accentblue}{RGB}{33, 150, 243}
+\definecolor{darkgray}{RGB}{50, 50, 50}
+\definecolor{codebg}{RGB}{245, 247, 250}
+\definecolor{keywordcolor}{RGB}{0, 102, 153}
+\definecolor{stringcolor}{RGB}{163, 21, 21}
+\definecolor{commentcolor}{RGB}{0, 128, 0}
+
+% --- Hyperref Setup ---
+\hypersetup{
+    colorlinks=true,
+    linkcolor=primaryblue,
+    urlcolor=accentblue,
+    citecolor=primaryblue
+}
+
+% --- Listings Setup for Python/C++/ROS2 ---
+\lstset{
+    backgroundcolor=\color{codebg},
+    basicstyle=\ttfamily\footnotesize\color{darkgray},
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    commentstyle=\color{commentcolor}\itshape,
+    keywordstyle=\color{keywordcolor}\bfseries,
+    stringstyle=\color{stringcolor},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{gray!30},
+    tabsize=4,
+    showstringspaces=false
+}
+
+% --- Header & Footer ---
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\textcolor{primaryblue}{\textbf{DuctBot Technical Report: ROS 2 Localization \& Video Comparison}}}
+\rhead{\textcolor{gray}{Roboserv 4i PVT. LTD.}}
+\cfoot{\thepage}
+
+% --- Section Styling ---
+\titleformat{\section}{\Large\bfseries\color{primaryblue}}{\thesection}{1em}{}[\titlerule]
+\titleformat{\subsection}{\large\bfseries\color{primaryblue!85}}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{primaryblue!70}}{\thesubsubsection}{1em}{}
+
+% --- Title Metadata ---
+\title{
+    \vspace{-1.5cm}
+    \textbf{\Huge \color{primaryblue} DuctBot Robotics Platform} \\
+    \vspace{0.3cm}
+    \Large \textbf{Technical Specification: ROS 2 Localization, Kinematics, Telemetry \& Video Localization Engine} \\
+    \vspace{0.2cm}
+    \normalsize Document ID: \texttt{DOC-17-ROS2-LOC} \quad | \quad Revision 1.0.0
+}
+
+\author{
+    \textbf{Eng. Abhishek Koli} \quad \& \quad \textbf{Eng. Divyansh Jha} \\
+    \textit{Roboserv 4i PVT. LTD. --- Embedded Systems \& Robotics Engineering}
+}
+\date{August 2026}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{fancy}
+
+\begin{abstract}
+This document details the engineering specifications, mathematical derivations, and ROS 2 implementation for the \textbf{DuctBot} industrial HVAC inspection robot. The architecture migrates the proven standalone localization engine from \texttt{fresh\_repo} into a standardized \textbf{ROS 2 Humble} package (\texttt{ductbot\_localization}) targeted for onboard deployment on \textbf{NVIDIA Jetson Nano / Orin} compute platforms. The system incorporates swept circular-arc kinematics, asymmetric track scale calibration ($15,055$ fwd / $16,260$ rev ticks/m), $450$-tick track backlash deadband compensation, full 9-DoF IMU lever-arm correction, $10\,\text{mm}$ spatial checkpoint logging, and a post-processing \textbf{Elastic Dynamic Time Warping (DTW)} video localization engine for automated before-and-after duct cleanliness comparison.
+\end{abstract}
+
+\vspace{0.2cm}
+\tableofcontents
+\vspace{0.4cm}
+
+\section{System Overview \& Architecture}
+
+The DuctBot robotic platform utilizes a split-brain embedded architecture coupled to an onboard ROS 2 host processor (NVIDIA Jetson Orin / Raspberry Pi):
+
+\begin{enumerate}
+    \item \textbf{Chassis Slave MCU (ESP32-S3)}: Manages motor driver PWM ramping (MDD20A track motors, MDD3A auxiliary motors), collects quadrature wheel encoder interrupts, and reads the environmental sensor suite (Sensirion SCD40 $\text{CO}_2$/Temp/RH, SGP40 VOC, ADS1115 MQ2/Dust, dual VL53L0X Time-of-Flight range sensors, and BNO085 9-DoF IMU).
+    \item \textbf{Pendant Master MCU (ESP32-C6)}: Interprets human operator joystick/encoder commands, computes curvature tank-drive steering, and bridges telemetry over high-speed RS485 ($115,200\,\text{baud}$) to USB Serial.
+    \item \textbf{Onboard Compute Core (ROS 2 Humble / Jetson Orin)}: Ingests the 100\,Hz serial stream, executes real-time circular-arc odometry, broadcasts dynamic TF2 coordinate trees, logs spatial checkpoints, and executes DTW video localization services.
+\end{enumerate}
+
+\begin{figure}[h!]
+\centering
+\begin{verbatim}
+ [ESP32-S3 Slave] --(RS485 115200 43-Byte)--> [ESP32-C6 Master]
+                                                     | (USB Serial 100Hz)
+                                                     v
+                         +-----------------------------------------------+
+                         |          ductbot_localization_node           |
+                         | - Swept Arc Kinematics & Backlash (450 ticks) |
+                         | - TF2: odom -> base_link -> front_face_link   |
+                         | - Checkpoint Logger (10mm spatial intervals)  |
+                         +-------+-----------+-----------+---------------+
+                                 |           |           |
+                 +---------------+           |           +---------------+
+                 v                           v                           v
+              /odom                    /ductbot/pose           /ductbot/environment
+         (nav_msgs/Odom)               (PoseStamped)            (Float32MultiArray)
+                 |                           |                           |
+                 +---------------------------+---------------------------+
+                                             |
+                                             v
+                         +-----------------------------------------------+
+                         |         ductbot_video_comparison_node        |
+                         | - Kabsch SE(2) 2D Path Rigid Alignment        |
+                         | - Constrained Elastic DTW on dYaw & Distance  |
+                         | - Side-by-Side Synchronized MP4 Generator     |
+                         +-----------------------------------------------+
+\end{verbatim}
+\caption{DuctBot System Data Flow & ROS 2 Architecture}
+\end{figure}
+
+\section{Kinematic Derivations \& Sensor Fusion}
+
+\subsection{Robot Physical Geometry}
+\begin{itemize}
+    \item \textbf{Track Gauge / Wheel Base ($W$)}: $0.260\,\text{m}$ ($26.0\,\text{cm}$ center-to-center track distance)
+    \item \textbf{Front Camera Offset ($L_{\text{front}}$)}: $0.145\,\text{m}$ ($14.5\,\text{cm}$ from center of rotation to front camera face)
+    \item \textbf{Forward Calibrated Scale ($K_{\text{fwd}}$)}: $15,055.0\,\text{ticks/meter}$
+    \item \textbf{Reverse Calibrated Scale ($K_{\text{rev}}$)}: $16,260.0\,\text{ticks/meter}$
+    \item \textbf{Backlash Deadband ($B$)}: $450\,\text{ticks}$ ($\approx 3.0\,\text{cm}$ track slack deadband)
+\end{itemize}
+
+\subsection{Differential Swept Circular Arc Integration}
+Given raw encoder delta ticks $\Delta E_1$ and $\Delta E_2$ after backlash filtering:
+\begin{equation}
+\Delta s_L = \frac{\Delta E_1}{K_{\text{tpm}}}, \quad \Delta s_R = \frac{\Delta E_2}{K_{\text{tpm}}}
+\end{equation}
+where $K_{\text{tpm}} = K_{\text{fwd}}$ if $\frac{\Delta E_1 + \Delta E_2}{2} \ge 0$, else $K_{\text{rev}}$.
+
+The angular heading increment $\Delta \theta$ and linear track displacement $\Delta s$ are:
+\begin{equation}
+\Delta \theta = \frac{\Delta s_R - \Delta s_L}{W}, \quad \Delta s = \frac{\Delta s_L + \Delta s_R}{2}
+\end{equation}
+
+If $|\Delta \theta| < 10^{-4}\,\text{rad}$ (pure linear translation along heading $\theta$):
+\begin{equation}
+\Delta x = -\Delta s \sin\theta, \quad \Delta y = \Delta s \cos\theta
+\end{equation}
+
+Otherwise, evaluating the circular swept arc of curvature radius $R = \frac{\Delta s}{\Delta \theta}$:
+\begin{equation}
+\Delta x = R \cdot \big(\cos(\theta + \Delta \theta) - \cos\theta\big), \quad \Delta y = R \cdot \big(\sin(\theta + \Delta \theta) - \sin\theta\big)
+\end{equation}
+
+The front-face camera position $(x_{\text{front}}, y_{\text{front}})$ tracking the visual inspection field is:
+\begin{equation}
+x_{\text{front}} = x_{\text{center}} - L_{\text{front}} \sin\theta, \quad y_{\text{front}} = y_{\text{center}} + L_{\text{front}} \cos\theta
+\end{equation}
+
+Cumulative camera odometer distance $\Delta s_{\text{camera}}$ is integrated to eliminate IMU stationary noise while gracefully accumulating true displacement during point turns:
+\begin{equation}
+\Delta s_{\text{camera}} = \sqrt{(\Delta s)^2 + (\Delta \theta \cdot L_{\text{front}})^2}
+\end{equation}
+
+\section{Video Localization \& DTW Alignment Engine}
+
+\subsection{The Temporal Alignment Problem}
+In HVAC duct inspection, the robot performs two distinct runs:
+\begin{enumerate}
+    \item \textbf{Pre-Cleaning Run ($A$)}: Traverses dirty duct; logs video $V_A(t)$ and checkpoint log $C_A(s)$.
+    \item \textbf{Post-Cleaning Run ($B$)}: Traverses cleaned duct; logs video $V_B(t)$ and checkpoint log $C_B(s)$.
+\end{enumerate}
+Because vehicle velocity profiles vary across runs due to variable motor loading, matching frames based on video timestamp ($t_A \leftrightarrow t_B$) causes severe desynchronization. The video localization engine aligns frames strictly based on spatial coordinates $s$.
+
+\subsection{Algorithmic Pipeline}
+\begin{enumerate}
+    \item \textbf{Spatial Resampling}: Trajectories $C_A$ and $C_B$ are interpolated at uniform spatial intervals ($\Delta s = 0.02\,\text{m} = 20\,\text{mm}$):
+    \begin{equation}
+    s_k = k \cdot \Delta s, \quad k \in [0, N-1]
+    \end{equation}
+    \item \textbf{Kabsch SE(2) 2D Path Alignment}: Evaluates the optimal rigid transformation $(R \in \text{SO}(2), t \in \mathbb{R}^2)$ minimizing coordinate displacement error between resampled points $A$ and $B$:
+    \begin{equation}
+    \min_{R, t} \sum_{i=1}^N \|A_i - (R B_i + t)\|^2
+    \end{equation}
+    \item \textbf{Constrained Dynamic Time Warping (DTW)}: Computes the optimal alignment matrix $D(i, j)$ using turn rate ($\Delta\text{Yaw}$) and length-normalized path distance penalties:
+    \begin{equation}
+    \text{Cost}(i, j) = w_{\text{yaw}} \cdot \frac{|\Delta\text{Yaw}_A(i) - \Delta\text{Yaw}_B(j)|}{180^\circ} + w_{\text{path}} \cdot |d_B(j) - d_A(i) \cdot \lambda|
+    \end{equation}
+    where $\lambda = \frac{M}{N}$ and Sakoe-Chiba window constraint $|i - j| \le 0.3 \max(N, M)$.
+    \item \textbf{Side-by-Side Video Stitching}: Extracts frames from $V_A$ and $V_B$ at matched path indices $j(i)$, applies Savitzky-Golay filtering, and generates the synchronized video output (\texttt{before\_vs\_after.mp4}) with frame rate $5\,\text{FPS}$ and keyframe spacing $g=1$.
+\end{enumerate}
+
+\section{ROS 2 Interface Specifications (Jetson Interface Control)}
+
+\subsection{Published Topics}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabularx}{\textwidth}{l l c X}
+\toprule
+\textbf{Topic Name} & \textbf{Message Type} & \textbf{Rate} & \textbf{Description} \\
+\midrule
+\texttt{/odom} & \texttt{nav\_msgs/Odometry} & 100\,Hz & Position $(X,Y,Z)$, quaternion, linear \& angular velocity twist \\
+\texttt{/ductbot/pose} & \texttt{geometry\_msgs/PoseStamped} & 100\,Hz & Front camera position $(X,Y)$ stamped in \texttt{odom} frame \\
+\texttt{/ductbot/path} & \texttt{nav\_msgs/Path} & Latched & 3D historical path trail for RViz display \\
+\texttt{/ductbot/imu} & \texttt{sensor\_msgs/Imu} & 100\,Hz & BNO085 orientation, angular velocity ($\text{rad/s}$), acceleration ($\text{m/s}^2$) \\
+\texttt{/ductbot/tof/left} & \texttt{sensor\_msgs/Range} & 100\,Hz & Left VL53L0X distance in meters ($0.025\,\text{m} - 1.0\,\text{m}$) \\
+\texttt{/ductbot/tof/right} & \texttt{sensor\_msgs/Range} & 100\,Hz & Right VL53L0X distance in meters \\
+\texttt{/ductbot/environment} & \texttt{std\_msgs/Float32MultiArray} & 100\,Hz & Array: \texttt{[Temp, Hum, VOC, CO2, MQ2, Dust]} \\
+\texttt{/tf} & \texttt{tf2\_msgs/TFMessage} & 100\,Hz & Dynamic: \texttt{odom} $\to$ \texttt{base\_link}; Static: sensors \\
+\texttt{/ductbot/video\_comparison\_progress} & \texttt{std\_msgs/Float32} & Event & Comparison generation progress percentage ($0.0 - 100.0\%$) \\
+\texttt{/ductbot/video\_comparison\_status} & \texttt{std\_msgs/String} & Event & JSON status updates from video rendering engine \\
+\bottomrule
+\end{tabularx}
+\caption{DuctBot ROS 2 Published Topics}
+\end{table}
+
+\subsection{Services}
+\begin{table}[h!]
+\centering
+\small
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Service Name} & \textbf{Service Type} & \textbf{Functional Action} \\
+\midrule
+\texttt{/ductbot/pause\_tracking} & \texttt{std\_srvs/srv/Trigger} & Pauses distance accumulation \& checkpoint CSV logging \\
+\texttt{/ductbot/resume\_tracking} & \texttt{std\_srvs/srv/Trigger} & Resumes active spatial tracking \\
+\texttt{/ductbot/reset\_odometry} & \texttt{std\_srvs/srv/Trigger} & Resets origin back to $(0,0,0)$ and flushes path \\
+\texttt{/ductbot/compare\_latest\_runs} & \texttt{std\_srvs/srv/Trigger} & Auto-detects 2 latest MP4/CSV pairs and generates comparison video \\
+\bottomrule
+\end{tabularx}
+\caption{DuctBot ROS 2 Services}
+\end{table}
+
+\section{Jetson Orin Python Client Implementation}
+
+Below is the complete client code template for Jetson engineers:
+
+\begin{lstlisting}[language=Python, caption={Jetson ROS 2 Subscriber \& Video Comparison Client}]
+import rclpy
+from rclpy.node import Node
+from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseStamped
+from sensor_msgs.msg import Range, Imu
+from std_msgs.msg import Float32MultiArray, String, Float32
+import json
+
+class JetsonDuctBotClient(Node):
+    def __init__(self):
+        super().__init__('jetson_ductbot_client')
+        
+        # 1. Subscriptions to Live Telemetry
+        self.create_subscription(Odometry, '/odom', self.odom_cb, 10)
+        self.create_subscription(PoseStamped, '/ductbot/pose', self.pose_cb, 10)
+        self.create_subscription(Range, '/ductbot/tof/left', self.tof_l_cb, 10)
+        self.create_subscription(Range, '/ductbot/tof/right', self.tof_r_cb, 10)
+        self.create_subscription(Float32MultiArray, '/ductbot/environment', self.env_cb, 10)
+        self.create_subscription(Float32, '/ductbot/video_comparison_progress', self.progress_cb, 10)
+        
+        # 2. Publisher for Triggering Video Comparison
+        self.trigger_pub = self.create_publisher(String, '/ductbot/trigger_comparison', 10)
+
+    def odom_cb(self, msg: Odometry):
+        x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
+        linear_vel = msg.twist.twist.linear.x
+
+    def pose_cb(self, msg: PoseStamped):
+        front_x = msg.pose.position.x
+        front_y = msg.pose.position.y
+
+    def tof_l_cb(self, msg: Range):
+        left_wall_dist_m = msg.range
+
+    def tof_r_cb(self, msg: Range):
+        right_wall_dist_m = msg.range
+
+    def env_cb(self, msg: Float32MultiArray):
+        temp_c, humidity_pct, voc, co2_ppm, mq2, dust = msg.data
+
+    def progress_cb(self, msg: Float32):
+        self.get_logger().info(f"Video Generation Progress: {msg.data:.1f}%")
+
+    def trigger_video_comparison(self, before_mp4, after_mp4):
+        payload = json.dumps({"before_video": before_mp4, "after_video": after_mp4})
+        self.trigger_pub.publish(String(data=payload))
+\end{lstlisting}
+
+\section{Validation \& Test Results}
+
+All modules were compiled and tested in the ROS 2 Humble workspace (\texttt{/home/divyansh\_ubuntu/ros2\_ws}) in WSL2:
+\begin{itemize}
+    \item \textbf{Build}: \texttt{colcon build --packages-select ductbot\_localization} completed in $1.32\,\text{s}$ with $0$ errors.
+    \item \textbf{Automated Test Suite}: \texttt{colcon test} passed $4/4$ test suites ($0$ errors, $0$ failures).
+    \item \textbf{Integration Verification}: Simulated 100\,Hz telemetry stream produced continuous topic publication, verified service calls, and generated $10\,\text{mm}$ spatial checkpoint logs.
+\end{itemize}
+
+\end{document}

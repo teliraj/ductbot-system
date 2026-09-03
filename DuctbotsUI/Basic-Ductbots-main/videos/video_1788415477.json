@@ -1,0 +1,12 @@
+{
+    "serial": 13,
+    "client": "tristar",
+    "area": "rabale",
+    "side": "s2",
+    "condition": "After",
+    "camera": "Front",
+    "timestamp": 1788415477,
+    "filename": "videos/video_1788415477.mp4",
+    "frame_times_csv": "videos/video_1788415477_frame_times.csv",
+    "checkpoints_csv": "videos/video_1788415477_checkpoints.csv"
+}

@@ -1,0 +1,3 @@
+Timestamp,Checkpoint Number,X Coordinate,Y Coordinate,Yaw Value,Distance (m),TOFL (mm),TOFR (mm),Temp (C),Humidity (%),VOC,CO2 (ppm),MQ2,Dust
+2026-09-03 11:34:37.995,EVENT,START,-,-,-,-,-,-,-,-,-,-,-
+2026-09-03 11:34:58.643,EVENT,STOP,-,-,-,-,-,-,-,-,-,-,-

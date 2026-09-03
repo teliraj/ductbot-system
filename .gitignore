@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+test_venv/
+
+# ROS 2 Colcon Build Artifacts
+build/
+install/
+log/
+colcon.meta
+
+# Distribution / Packaging
+*.egg-info/
+dist/
+eggs/
+.eggs/
+
+# IDE & Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Operating System
+.DS_Store
+Thumbs.db

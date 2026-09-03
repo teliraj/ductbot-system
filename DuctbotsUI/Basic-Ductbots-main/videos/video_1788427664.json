@@ -1,0 +1,12 @@
+{
+    "serial": 22,
+    "client": "CIPLA",
+    "area": "RABALE",
+    "side": "S1",
+    "condition": "Before",
+    "camera": "Front",
+    "timestamp": 1788427664,
+    "filename": "videos/video_1788427664.mp4",
+    "frame_times_csv": "videos/video_1788427664_frame_times.csv",
+    "checkpoints_csv": "videos/video_1788427664_checkpoints.csv"
+}

@@ -1,0 +1,12 @@
+{
+    "serial": 21,
+    "client": "tri",
+    "area": "rabale",
+    "side": "q1",
+    "condition": "Before",
+    "camera": "Front",
+    "timestamp": 1788425056,
+    "filename": "videos/video_1788425056.mp4",
+    "frame_times_csv": "videos/video_1788425056_frame_times.csv",
+    "checkpoints_csv": "videos/video_1788425056_checkpoints.csv"
+}
