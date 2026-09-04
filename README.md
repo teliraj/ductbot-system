@@ -86,11 +86,21 @@ source install/setup.bash
 cd ..
 ```
 
-### Run the System
+### Run the System (Native)
 Simply execute the launch script from the repository root:
 ```bash
 ./run_system.sh
 ```
+
+### Run the System (Docker Container)
+To build and run in an isolated Docker container with full GUI forwarding and hardware serial access:
+```bash
+./run_docker.sh
+# Or manually with docker compose:
+xhost +local:root
+docker compose up --build
+```
+
 
 ---
 
