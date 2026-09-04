@@ -802,7 +802,7 @@ class TitleReveal(Widget):
     def __init__(self, animator, anchor, **kwargs):
         super().__init__(**kwargs)
         self.animator = animator
-        cx, base_y = anchor
+        self.anchor = anchor if callable(anchor) else (lambda: anchor)
         self.title = Label(
             text="4i ROBOSERV", font_size=sp(34), bold=True,
             color=(*COL_SOFT_WHITE[:3], 0), size_hint=(None, None),
@@ -815,19 +815,23 @@ class TitleReveal(Widget):
             text=tracked("IMAGINE · INNOVATE · INVENT · IMPLEMENT", 1),
             font_size=sp(13), color=(*COL_NEON_CYAN[:3], 0), size_hint=(None, None),
         )
+        for lbl in (self.title, self.subtitle, self.tagline):
+            self.add_widget(lbl)
+        self._reposition()
+
+    def _reposition(self, *a):
+        cx, base_y = self.anchor()
         self._targets = {}
         y = base_y
         for lbl, gap in ((self.title, 46), (self.subtitle, 30), (self.tagline, 34)):
             lbl.texture_update()
             lbl.size = lbl.texture_size
-            self.add_widget(lbl)
             self._targets[lbl] = (cx, y)
+            lbl.center = (cx, y - dp(18))
             y -= gap
-        for lbl in self._targets:
-            tx, ty = self._targets[lbl]
-            lbl.center = (tx, ty - dp(18))
 
     def reveal(self):
+        self._reposition()
         for i, lbl in enumerate((self.title, self.subtitle, self.tagline)):
             tx, ty = self._targets[lbl]
 
@@ -853,13 +857,11 @@ class StatusTicker(Widget):
     def __init__(self, animator, anchor, **kwargs):
         super().__init__(**kwargs)
         self.animator = animator
-        cx, cy = anchor
+        self.anchor = anchor if callable(anchor) else (lambda: anchor)
         self.label = Label(
             text="", font_size=sp(13), color=(*COL_SOFT_WHITE[:3], 0), size_hint=(None, None),
         )
         self.add_widget(self.label)
-        self.label.center = (cx, cy)
-        self.ring_center = (cx, cy - dp(26))
         self.ring_radius = dp(4)
         self.progress_angle = 0.0
         with self.canvas:
@@ -870,8 +872,9 @@ class StatusTicker(Widget):
     def _redraw_arc(self, dt):
         if self.progress_angle <= 0:
             return
-        cx, cy = self.ring_center
-        self._arc.circle = (cx, cy, self.ring_radius, -90, -90 + self.progress_angle)
+        cx, cy = self.anchor()
+        ring_cy = cy - dp(26)
+        self._arc.circle = (cx, ring_cy, self.ring_radius, -90, -90 + self.progress_angle)
 
     def start(self):
         self._arc_color.a = 0.7
@@ -880,14 +883,22 @@ class StatusTicker(Widget):
         for i, text in enumerate(STATUS_PHRASES):
             Clock.schedule_once(lambda dt, t=text, first=(i == 0): self._show(t, first), i * step)
 
+    def _update_label_pos(self):
+        cx, cy = self.anchor()
+        self.label.texture_update()
+        self.label.size = self.label.texture_size
+        self.label.center = (cx, cy)
+
     def _show(self, text, first):
         if first:
             self.label.text = text
+            self._update_label_pos()
             self.animator.animate(self.label, 0.2, ease=ease_linear, color=(*COL_SOFT_WHITE[:3], 0.85))
             return
 
         def swap():
             self.label.text = text
+            self._update_label_pos()
             self.animator.animate(self.label, 0.18, ease=ease_linear, color=(*COL_SOFT_WHITE[:3], 0.85))
 
         self.animator.animate(self.label, 0.12, ease=ease_linear, on_complete=swap, color=(*COL_SOFT_WHITE[:3], 0))
@@ -975,15 +986,22 @@ class SplashLoader(FloatLayout):
         )
         self.logo_scatter.add_widget(self.idea_words)
 
-        title_anchor = (Window.width * 0.46, Window.height * 0.30)
-        self.title_group = TitleReveal(self.animator, title_anchor, size_hint=(1, 1))
+        self.title_group = TitleReveal(self.animator, self._title_anchor, size_hint=(1, 1))
         self.add_widget(self.title_group)
 
-        status_anchor = (Window.width * 0.46, Window.height * 0.30 - dp(112))
-        self.status_ticker = StatusTicker(self.animator, status_anchor, size_hint=(1, 1))
+        self.status_ticker = StatusTicker(self.animator, self._status_anchor, size_hint=(1, 1))
         self.add_widget(self.status_ticker)
 
+        self.bind(size=self._on_resize)
+        Window.bind(size=self._on_resize)
+
         self._schedule_all()
+
+    def _on_resize(self, *a):
+        ix, iy = self._i_center()
+        self.i_label.center = (ix, iy)
+        if hasattr(self, "title_group"):
+            self.title_group._reposition()
 
     # -- geometry helpers ---------------------------------------------------
 
@@ -991,15 +1009,22 @@ class SplashLoader(FloatLayout):
         return max(0.7, min(1.6, min(Window.width, Window.height) / 900.0))
 
     def _logo_center(self):
-        return (Window.width * 0.46, Window.height * 0.56)
+        return (Window.width * 0.50, Window.height * 0.56)
+
+    def _title_anchor(self):
+        return (Window.width * 0.50, Window.height * 0.30)
+
+    def _status_anchor(self):
+        cx, cy = self._title_anchor()
+        return (cx, cy - dp(112))
 
     def _four_center(self):
         cx, cy = self._logo_center()
-        return (cx - dp(46) * self._scale_factor(), cy)
+        return (cx - dp(37.5) * self._scale_factor(), cy)
 
     def _i_center(self):
         cx, cy = self._logo_center()
-        return (cx + dp(62) * self._scale_factor(), cy)
+        return (cx + dp(78.75) * self._scale_factor(), cy)
 
     def _four_size(self):
         s = self._scale_factor()
@@ -1056,6 +1081,12 @@ class SplashLoader(FloatLayout):
     def _scene_status(self):
         self.status_ticker.start()
 
+    def on_touch_down(self, touch):
+        if not self._crossfade_started:
+            self._crossfade()
+            return True
+        return super().on_touch_down(touch)
+
     def _crossfade(self):
         if self._crossfade_started:
             return
@@ -1084,12 +1115,20 @@ class SplashLoader(FloatLayout):
         self.four_glyph.stop()
         self.idea_words.stop()
         self.status_ticker.stop()
+        try:
+            Window.unbind(size=self._on_resize)
+        except Exception:
+            pass
         if self.parent:
             self.parent.remove_widget(self)
         if self.on_finish_callback:
             self.on_finish_callback()
 
+
     def _force_finish(self):
         if not self._done:
             self._crossfade()
             Clock.schedule_once(lambda dt: self._finish(), 1.2)
+
+
+SplashScreen = SplashLoader

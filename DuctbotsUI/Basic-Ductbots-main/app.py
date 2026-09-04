@@ -1933,7 +1933,7 @@ class DuctbotUI(BoxLayout):
             threading.Thread(target=do_export, daemon=True).start()
 
 class DuctbotApp(App):
-    SHOW_STARTUP_ANIMATION = False
+    SHOW_STARTUP_ANIMATION = True
     START_FULLSCREEN = False
 
     def build(self):
